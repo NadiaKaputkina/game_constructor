@@ -1,117 +1,175 @@
 <template>
 
-    <v-card id="SpritesKeywords"
-            class="overflow-auto px-3"
-            height="300">
-        <v-card-text>Список ключевых слов спрайтов:</v-card-text>
+    <v-card>
+        <v-card-title
+                class="headline grey lighten-2"
+                primary-title>
+            Новый спрайт
+        </v-card-title>
 
-        <v-row class="px-3">
-            <v-text-field label="Фильтр"
-                          class="mr-4"
-                          v-model="searchTag"
-                          clearable>
-            </v-text-field>
+        <v-text-field class="mx-4"
+                      label="Название"
+                      clearable
+                      :rules="rules"
+                      v-model="newSpriteName.name">
+        </v-text-field>
 
-            <v-text-field label="Новое слово"
-                          v-model="newKeyword"
-                          clearable
-                          :error-messages="isExist ? 'Keyword already exist!' : null"
-                          :append-icon="'mdi-plus'"
-                          @click:append="addNewKeyword"
-                          @keyup.enter="addNewKeyword"
-            ></v-text-field>
+        <v-combobox class="mx-4"
+                    v-model="selectedTags"
+                    :items="filteredTags"
+                    chips
+                    dense
+                    clearable
+                    label="Теги"
+                    multiple
+                    hide-selected>
+            <template v-slot:selection="{ attrs, item }">
+                <v-chip v-bind="attrs"
+                        label
+                        close
+                        @click:close="onRemove(item)">
+                    {{ item }}
+                </v-chip>
+            </template>
+        </v-combobox>
 
-        </v-row>
+        <v-file-input class="mx-4"
+                      @change="previewImage"
+                      :rules="rules"
+                      label="File input"
+                      accept="image/png"
+                      prepend-icon="mdi-camera"
+        >
+            <template v-slot:selection="{ text }">
+                <v-chip small label>
+                    {{ text }}
+                </v-chip>
+            </template>
+        </v-file-input>
 
-        <v-row class="mx-0" v-for="(tag, i) of filteredTags" :key="i">
-            <v-text-field :value="tag.name"
-                          @input="changeValue($event, tag.name, i) "
-                          dense>
-            </v-text-field>
-
-            <v-icon v-if="isEdit[i]"
-                @click="updateTag(tag, i)">mdi-content-save</v-icon>
-            <v-icon @click="deleteTag(tag)">mdi-delete</v-icon>
-        </v-row>
+        <!--добавить-->
+        <v-card-actions>
+            <v-btn color="primary"
+                   :disabled="!newSpriteName || !newFile"
+                   @click="addNewSprite"
+                   @click.close="$emit('close-modal', newSpriteName)">
+                Добавить
+            </v-btn>
+        </v-card-actions>
 
     </v-card>
+
 
 </template>
 
 <script>
+
+    import {ids} from '@/data/spritesTags'
     import fb from 'firebase';
 
     export default {
-        name: "KeywordsLibrary",
+        name: "NewSprite",
         props: {
             keywordsLibrary: Array
         },
         data() {
             return {
-                searchTag: '',
-                newKeyword: '',
-                isExist: false,
-                isEdit: [],
+                ids,
+
+                newFile: '',
+
+                newSpriteName: {name:''},
+                newSpriteSrc: '',
+                selectedTags: [],
+
+                newKeywords: [],
+
+                rules: [value => !!value]
+            }
+        },
+   
+        watch: {
+            selectedTags: function (newArr, oldArr) {
+                if (newArr.length > oldArr.length) {
+                    const newKeywordName = newArr[newArr.length - 1];
+
+                    const isKeywordExist = this.keywordsLibrary.some(el => el.name === newKeywordName);
+
+                    if (!isKeywordExist) {
+                        const newKeyword = {
+                            tagId: '',
+                            name: newKeywordName
+                        };
+
+                        fb.firestore().collection('SpritesKeywords').add(newKeyword)
+                        .then(() => console.log('Keyword successfully added!'))
+                        .catch(err => console.error('Error adding keyword: ', err));
+                    }
+
+                }
             }
         },
 
         computed: {
             filteredTags: function () {
-                if (this.searchTag === null) return this.keywordsLibrary;
-
-                return this.keywordsLibrary.filter(tag => tag.name.includes(this.searchTag))
-            }
-        },
-
-        watch: {
-            newKeyword: function (newWord, oldWord) {
-                if (this.isExist && newWord !== oldWord) this.isExist = !this.isExist;
+                return this.keywordsLibrary.map(tag => tag.name);
             }
         },
 
         methods: {
-            changeValue(newValue, oldValue, i) {
-                if (newValue !== oldValue) this.isEdit[i] = true;
-            },
+            previewImage(event) {
+                this.newFile = event;
 
-            updateTag(tag, i) {
-                fb.firestore().collection('SpritesKeywords').doc(tag.tagId)
-                .update({
-                    name: tag.name
-                })
-                .then(() => {
-                    this.isEdit[i] = false;
-                    console.log("Keyword successfully update!")
-                })
-                .catch(error => console.error("Error updating keyword: ", error));
-            },
-
-            deleteTag(tag) {
-                fb.firestore().collection('SpritesKeywords').doc(tag.tagId).delete()
-                .then(() => console.log("Keyword successfully deleted!"))
-                .catch(error => console.error("Error deleting keyword: ", error));
-
-            },
-
-            addNewKeyword() {
-                if (this.newKeyword.length) {
-                    const newKeyword = {
-                        tagId: '',
-                        name: this.newKeyword,
-                    };
-
-                    const isExist = this.keywordsLibrary.some(keyword => keyword.name === this.newKeyword);
-
-                    if (!isExist) {
-                        fb.firestore().collection('SpritesKeywords').add(newKeyword)
-                        .then(() => console.log('Keyword successfully added!'))
-                        .catch(err => console.error('Error adding keyword: ', err));
-
-                        this.newKeyword = '';
-                    } else {
-                        this.isExist = true;
-                    }
+                if (event !== undefined) {
+                    this.newSpriteSrc = +(new Date()) + '_' + event.name;
                 }
+            },
+
+            onRemove(item) {
+                const index = this.selectedTags.indexOf(item);
+
+                this.selectedTags.splice(index, 1);
+            },
+
+            addNewSprite() {
+                const newSprite = {
+                    spriteId: '',
+                    name: this.newSpriteName.name,
+                    id: '',
+                    levelsId: [],
+                    tags: [],
+                    src: this.newSpriteSrc
+                };
+
+                newSprite.tags = this.selectedTags.map(tagName => {
+                    const index = this.keywordsLibrary.findIndex(tag => tag.name === tagName);
+
+                    return this.keywordsLibrary[index].tagId;
+                });
+
+                var storage = fb.storage();
+                var storageRef = storage.ref();
+                var listRef = storageRef.child('SpritesLibrary/' + this.newSpriteSrc);
+                var file = this.newFile;
+
+                listRef.put(file)
+                .then( snapshot => {
+  
+                    snapshot.ref.getDownloadURL()
+                        .then(downloadURL => {
+                            newSprite.src = downloadURL;
+
+                            fb.firestore().collection('SpritesLibrary').add(newSprite)
+                            .then(() => {
+                                this.newFile = [];
+                                this.newSpriteName = {name:''};
+                                this.selectedTags = [];
+
+                            })
+                            .catch(err => console.error('Error adding new sprite: ', err));
+                        })
+                });
+
 
             }
         }
