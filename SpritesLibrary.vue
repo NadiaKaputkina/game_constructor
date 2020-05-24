@@ -1,123 +1,231 @@
 <template>
 
-    <v-card id="SpritesKeywords"
-            class="overflow-auto px-3"
-            height="300">
-        <v-card-text>Список ключевых слов спрайтов:</v-card-text>
+    <v-card>
+        <v-card-title
+            class="headline grey lighten-2"
+            primary-title>
+            Библиотека спрайтов
+        </v-card-title>
 
-        <v-row class="px-3">
-            <v-text-field label="Фильтр"
-                          class="mr-4"
-                          v-model="searchTag"
-                          clearable>
-            </v-text-field>
+        <!--поиск-->
+        <div class="sprites-wrap">
 
-            <v-text-field label="Новое слово"
-                          v-model="newKeyword"
-                          clearable
-                          :error-messages="isExist ? 'Keyword already exist!' : null"
-                          :append-icon="'mdi-plus'"
-                          @click:append="addNewKeyword"
-                          @keyup.enter="addNewKeyword"
-            ></v-text-field>
+            <div class="search">
+                <!--поиск по имени-->
+                <v-combobox v-model="selectedNames"
+                            :items="filteredNames"
+                            chips
+                            dense
+                            clearable
+                            label="Название"
+                            multiple
+                            hide-selected>
+                    <template v-slot:selection="{ attrs, item }">
+                        <v-chip v-bind="attrs"
+                                label
+                                close
+                                @click:close="onRemove('selectedNames', item)">
+                            {{ item }}
+                        </v-chip>
+                    </template>
+                </v-combobox>
 
-        </v-row>
+                <!--поиск по уровню-->
+                <v-combobox v-model="selectedIds"
+                            :items="filteredIds"
+                            chips
+                            dense
+                            clearable
+                            label="Уровень"
+                            multiple
+                            hide-selected>
+                    <template v-slot:selection="{ attrs, item }">
+                        <v-chip v-bind="attrs"
+                                label
+                                close
+                                @click:close="onRemove('selectedIds', item)">
+                            {{ item }}
+                        </v-chip>
+                    </template>
+                </v-combobox>
 
-        <v-row class="mx-0" v-for="(tag, i) of filteredTags" :key="i">
-            <v-text-field :value="tag.name"
-                          @input="changeValue($event, tag.name, i) "
-                          dense>
-            </v-text-field>
+                <!--поиск по тегам-->
+                <v-combobox v-model="selectedTags"
+                            :items="filteredTags"
+                            chips
+                            dense
+                            clearable
+                            label="Теги"
+                            multiple
+                            hide-selected>
+                    <template v-slot:selection="{ attrs, item }">
+                        <v-chip v-bind="attrs"
+                                label
+                                close
+                                @click:close="onRemove('selectedTags', item)">
+                            {{ item }}
+                        </v-chip>
+                    </template>
+                </v-combobox>
 
-            <v-icon v-if="isEdit[i]"
-                @click="updateTag(tag, i)">mdi-content-save</v-icon>
-            <v-icon @click="deleteTag(tag)">mdi-delete</v-icon>
-        </v-row>
+                <v-card-text class="title">
+                    Вы выбрали: {{nameSelectedSprite.name}}
+                </v-card-text>
+
+                <!--закрыть библиотеку-->
+                <v-card-actions>
+                    <v-btn color="primary"
+                           @click="$emit('close-library-modal', nameSelectedSprite)"
+                           :disabled="!isSpriteSelected">
+                        Выбрать
+                    </v-btn>
+                </v-card-actions>
+            </div>
+
+
+            <div class="sprites">
+                <!--иконки спрайтов-->
+                <sprites-icon v-for="(icon, i) of filteredLibraryTextures"
+                              @select-sprite="onSelectedSprite(icon, $event)"
+                              :icon="icon"
+                              :key="i"
+                              :keywordsLibrary="keywordsLibrary">
+                </sprites-icon>
+            </div>
+        </div>
 
     </v-card>
 
 </template>
 
 <script>
-    import fb from 'firebase';
+
+    import { ids} from '@/data/spritesTags';
+
+    import SpritesIcon from "./SpritesIcon";
 
     export default {
-        name: "KeywordsLibrary",
+        name: "SpritesLibrary",
+        components: {
+            'sprites-icon': SpritesIcon,
+        },
         props: {
-            keywordsLibrary: Array
+            libraryModal: Boolean,
+            libraryTextures: Array,
+            keywordsLibrary: Array,
         },
         data() {
             return {
-                searchTag: '',
-                newKeyword: '',
-                isExist: false,
-                isEdit: [],
-            }
-        },
+                ids,
 
-        computed: {
-            filteredTags: function () {
-                if (this.searchTag === null) return this.keywordsLibrary;
+                selectedNames: [],
+                selectedIds: [],
+                selectedTags: [],
 
-                return this.keywordsLibrary.filter(tag => tag.name.includes(this.searchTag))
+                isSpriteSelected: false,
+                nameSelectedSprite: {name:''}
             }
         },
 
         watch: {
-            newKeyword: function (newWord, oldWord) {
-                if (this.isExist && newWord !== oldWord) this.isExist = !this.isExist;
+            selectedNames: function () {
+                this.isSpriteSelected = false
+            },
+            selectedIds: function () {
+                this.isSpriteSelected = false
+            },
+            selectedTags: function () {
+                this.isSpriteSelected = false
+            },
+        },
+
+        computed: {
+            filteredTags: function () {
+                return this.keywordsLibrary.map(tag => tag.name);
+            },
+
+            filteredNames: function () {
+                return this.libraryTextures.map(item => item.name);
+            },
+
+            filteredIds: function () {
+                return this.ids;
+            },
+
+            /**
+             * Фильтруются спрайты согласно поиску
+             */
+            filteredLibraryTextures: function () {
+                let filteredLibrary = [...this.libraryTextures];
+
+                /*--поиск спрайтов по имени--*/
+                if (this.selectedNames.length) {
+                    filteredLibrary = filteredLibrary.filter(el =>
+                        this.selectedNames.some(
+                            name => el.name.includes(name)
+                        )
+                    );
+                }
+
+                /*--поиск спрайтов по id--*/
+                if (this.selectedIds.length) {
+                    filteredLibrary = filteredLibrary.filter(el =>
+                        this.selectedIds.some(
+                            id => {
+                                let indexId = this.ids.indexOf(id);
+                                return el.levelsId.includes(indexId)
+                            }
+                        )
+                    );
+                }
+
+                /*--поиск спрайтов по тегам--*/
+                if (this.selectedTags.length) {
+                    filteredLibrary = filteredLibrary.filter(el =>
+                        this.selectedTags.some(tagName => {
+
+                            const index = this.keywordsLibrary.findIndex(tag => tag.name === tagName);
+                            const tagId = this.keywordsLibrary[index].tagId;
+
+                            return el.tags.includes(tagId)
+                            }
+                        )
+                    );
+                }
+
+                return filteredLibrary;
             }
         },
 
         methods: {
-            changeValue(newValue, oldValue, i) {
-                if (newValue !== oldValue) this.isEdit[i] = true;
+            onRemove(lineSearch, item) {
+                const index = this[lineSearch].indexOf(item);
+
+                this[lineSearch].splice(index, 1);
             },
 
-            updateTag(tag, i) {
-                fb.firestore().collection('SpritesKeywords').doc(tag.tagId)
-                .update({
-                    name: tag.name
-                })
-                .then(() => {
-                    this.isEdit[i] = false;
-                    console.log("Keyword successfully update!")
-                })
-                .catch(error => console.error("Error updating keyword: ", error));
-            },
-
-            deleteTag(tag) {
-                fb.firestore().collection('SpritesKeywords').doc(tag.tagId).delete()
-                .then(() => console.log("Keyword successfully deleted!"))
-                .catch(error => console.error("Error deleting keyword: ", error));
-
-            },
-
-            addNewKeyword() {
-                if (this.newKeyword.length) {
-                    const newKeyword = {
-                        tagId: '',
-                        name: this.newKeyword,
-                    };
-
-                    const isExist = this.keywordsLibrary.some(keyword => keyword.name === this.newKeyword);
-
-                    if (!isExist) {
-                        fb.firestore().collection('SpritesKeywords').add(newKeyword)
-                        .then(() => console.log('Keyword successfully added!'))
-                        .catch(err => console.error('Error adding keyword: ', err));
-
-                        this.newKeyword = '';
-                    } else {
-                        this.isExist = true;
-                    }
-                }
-
+            onSelectedSprite(spriteName, event) {
+                this.isSpriteSelected = event;
+                this.nameSelectedSprite = spriteName;
             }
         }
     }
+
 </script>
 
 <style scoped>
 
+    .search {
+        position: fixed;
+        padding: 10px 20px;
+        width: 20vw;
+    }
+
+    .sprites {
+        height: 80vh;
+        overflow-y: auto;
+        padding: 10px 10px 10px 20vw;
+        display: flex;
+        flex-flow: row wrap;
+    }
 </style>
